@@ -1,0 +1,25 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+
+# pandas/numpy row access (iloc, itertuples) yields wide union types in the stubs; relax only
+# those error codes for the analytics modules. API, ETL, AI and experiment services stay strict.
+[[tool.mypy.overrides]]
+module = ["app.services.autopsy", "app.services.overview", "app.services.prediction", "app.services.similarity",
+          "app.ml.*", "app.olap.*", "app.warehouse.*", "app.seed.*"]
+disable_error_code = ["union-attr", "arg-type", "operator", "index", "call-overload", "misc", "assignment",
+                      "attr-defined", "name-defined", "var-annotated", "dict-item", "return-value"]

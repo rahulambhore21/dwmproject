@@ -1,0 +1,26 @@
+{
+  "name": "signal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SIGNAL: content intelligence & experimentation engine. Every post becomes data for the next decision.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "postinstall": "node scripts/setup.mjs",
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm --prefix frontend run build",
+    "start": "node scripts/start.mjs",
+    "seed": "node scripts/py.mjs -m app.seed.cli --reset",
+    "lint": "npm run lint:frontend && npm run lint:backend",
+    "lint:frontend": "npm --prefix frontend run lint",
+    "lint:backend": "node scripts/py.mjs -m ruff check app tests",
+    "typecheck": "npm run typecheck:frontend && npm run typecheck:backend",
+    "typecheck:frontend": "npm --prefix frontend run typecheck",
+    "typecheck:backend": "node scripts/py.mjs -m mypy -p app --explicit-package-bases",
+    "test": "npm run test:backend && npm run test:frontend",
+    "test:backend": "node scripts/py.mjs -m pytest -q",
+    "test:frontend": "npm --prefix frontend run test",
+    "test:e2e": "npm --prefix frontend run test:e2e",
+    "verify": "node scripts/verify.mjs"
+  }
+}
