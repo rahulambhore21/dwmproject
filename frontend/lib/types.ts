@@ -456,9 +456,22 @@ export interface EtlReport {
   rejection_reasons: Record<string, number>;
   rejection_examples: { row: number; reason: string }[];
   warehouse: { fact_rows: number; dimensions: Record<string, number> };
+  mode?: "append" | "replace";
+  defaulted_fields?: string[];
+}
+
+export interface CsvPreview {
+  filename: string | null;
+  row_count: number;
+  headers: string[];
+  mapping: Record<string, string | null>;
+  sample: Record<string, string>[];
+  fields: { name: string; required: boolean }[];
+  missing_required: string[];
 }
 
 export interface EtlRuns {
   items: { id: number; source: string; started_at: string; rows_in: number; rows_loaded: number; report: EtlReport }[];
   required_columns: string[];
+  optional_columns: string[];
 }

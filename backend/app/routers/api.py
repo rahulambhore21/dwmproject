@@ -1,18 +1,18 @@
 """HTTP API. Thin: validation + delegation to services (all analytics live outside the routers)."""
 from __future__ import annotations
 
-import csv
-import io
+import json
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..db import get_session
-from ..etl.pipeline import REQUIRED_COLUMNS, ingest_records
+from ..etl import csv_import
+from ..etl.pipeline import MAX_ROWS_PER_BATCH, RawPostIn, ingest_records, replace_workspace_content
 from ..ml.pipeline import ALGORITHMS, latest_run, latest_runs, train_all
 from ..models import EtlRun, ModelRun
 from ..olap import engine as olap
@@ -223,38 +223,75 @@ def ai_interpret(body: InterpretIn, c: Ctx) -> dict:
 
 
 # --------------------------------------------------------------- ingestion
-MAX_UPLOAD_BYTES = 5 * 1024 * 1024
-_INT_FIELDS = ("impressions", "reach", "likes", "comments", "shares", "saves", "media_count")
+async def _read_csv(file: UploadFile) -> tuple[list[str], list[dict[str, str]]]:
+    raw = await file.read(csv_import.MAX_UPLOAD_BYTES + 1)
+    try:
+        return csv_import.parse_csv(raw)
+    except csv_import.CsvError as exc:
+        raise ApiError(exc.status, exc.code, exc.message) from exc
+
+
+@router.post("/ingest/csv/preview")
+async def ingest_csv_preview(file: UploadFile = File(...)) -> dict:
+    """Read-only: detect columns and suggest a mapping. Nothing is written."""
+    headers, rows = await _read_csv(file)
+    mapping = csv_import.suggest_mapping(headers)
+    return {
+        "filename": file.filename, "row_count": len(rows), "headers": headers, "mapping": mapping,
+        "sample": [{h: r.get(h, "") for h in headers} for r in rows[: csv_import.PREVIEW_ROWS]],
+        "fields": [{"name": f, "required": req} for f, (req, _) in csv_import.FIELDS.items()],
+        "missing_required": [f for f in csv_import.REQUIRED_FIELDS if not mapping.get(f)],
+    }
 
 
 @router.post("/ingest/csv")
-async def ingest_csv(c: Ctx, file: UploadFile = File(...)) -> dict:
-    raw = await file.read(MAX_UPLOAD_BYTES + 1)
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise ApiError(413, "file_too_large", "CSV must be 5 MB or smaller.")
+async def ingest_csv(
+    c: Ctx,
+    file: UploadFile = File(...),
+    mapping: Annotated[str | None, Form()] = None,
+    mode: Annotated[Literal["append", "replace"], Form()] = "append",
+    day_first: Annotated[bool, Form()] = False,
+    workspace_name: Annotated[str | None, Form(max_length=120)] = None,
+) -> dict:
+    headers, rows = await _read_csv(file)
     try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise ApiError(422, "bad_encoding", "CSV must be UTF-8 encoded.") from exc
-    reader = csv.DictReader(io.StringIO(text))
-    missing = [col for col in REQUIRED_COLUMNS if col not in (reader.fieldnames or [])]
-    if missing:
-        raise ApiError(422, "missing_columns", f"CSV is missing required columns: {', '.join(missing)}")
-    records = []
-    for row in reader:
-        rec = {k: (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k in REQUIRED_COLUMNS or k == "media_count"}
-        for f in _INT_FIELDS:
-            if rec.get(f) in ("", None):
-                rec.pop(f, None)
-        records.append(rec)
-    if not records:
-        raise ApiError(422, "empty_file", "CSV contains no rows.")
-    try:
-        report = ingest_records(c.session, c.workspace.id, records, source=f"csv:{file.filename}")
+        chosen = json.loads(mapping) if mapping else csv_import.suggest_mapping(headers)
+        if not isinstance(chosen, dict):
+            raise ValueError("mapping must be an object")
+        chosen = csv_import.validate_mapping(chosen, headers)
     except ValueError as exc:
-        raise ApiError(413, "batch_too_large", str(exc)) from exc
+        raise ApiError(422, "bad_mapping", f"Invalid column mapping: {exc}") from exc
+    except csv_import.CsvError as exc:
+        raise ApiError(exc.status, exc.code, exc.message) from exc
+    records, defaulted = csv_import.apply_mapping(rows, chosen, day_first=day_first)
+    if len(records) > MAX_ROWS_PER_BATCH:
+        raise ApiError(413, "batch_too_large", f"Batch too large ({len(records)} rows, max {MAX_ROWS_PER_BATCH}).")
+    if mode == "replace":
+        # Never wipe existing data for a file that would load nothing.
+        if not any(_is_valid(r) for r in records):
+            raise ApiError(422, "nothing_valid", "No row passed validation, so the existing data was left untouched. "
+                           "Check the column mapping and date format.")
+        replace_workspace_content(c.session, c.workspace.id, (workspace_name or "").strip() or None)
+    report = ingest_records(c.session, c.workspace.id, records, source=f"csv:{file.filename}")
+    report["mode"] = mode
+    report["defaulted_fields"] = defaulted
+    report["mapping"] = chosen
     runs = train_all(c.session, c.workspace.id)
     return {"report": report, "models_retrained": len(runs)}
+
+
+def _is_valid(rec: dict) -> bool:
+    try:
+        RawPostIn(**rec)
+    except (ValidationError, TypeError):
+        return False
+    return True
+
+
+@router.get("/ingest/template.csv")
+def ingest_template() -> Response:
+    return Response(csv_import.template_csv(), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="signal-template.csv"'})
 
 
 @router.get("/etl/runs")
@@ -262,7 +299,8 @@ def etl_runs(c: Ctx) -> dict:
     rows = c.session.execute(select(EtlRun).where(EtlRun.workspace_id == c.workspace.id).order_by(EtlRun.id.desc()).limit(10)).scalars()
     return {"items": [{"id": r.id, "source": r.source, "started_at": r.started_at.isoformat(), "rows_in": r.rows_in,
                        "rows_loaded": r.rows_loaded, "report": r.report} for r in rows],
-            "required_columns": REQUIRED_COLUMNS}
+            "required_columns": csv_import.REQUIRED_FIELDS,
+            "optional_columns": [f for f, (req, _) in csv_import.FIELDS.items() if not req]}
 
 
 _ = datetime  # (kept for type-checkers resolving annotations)

@@ -52,7 +52,7 @@ The browser only talks to the web origin; `/api/*` is proxied to FastAPI, so the
 
 | Layer | Implementation |
 |---|---|
-| **ETL** | Row-level Pydantic validation (non-negative counts, reach ≤ impressions, engagements ≤ impressions, no future dates), dedupe, per-run report of every rejection. CSV import endpoint + UI |
+| **ETL** | Row-level Pydantic validation (non-negative counts, reach ≤ impressions, engagements ≤ impressions, no future dates), dedupe, per-run report of every rejection. Bring-your-own CSV: auto-detected column mapping with preview, append or replace mode, downloadable template (`Explore → Models & data`, API `POST /api/ingest/csv/preview` + `/api/ingest/csv`) |
 | **Warehouse** | Star schema: `fact_post` + `dim_date/platform/format/topic/hook/tone/daypart`, rebuilt idempotently from staging |
 | **OLAP** | Roll-up (subtotals), drill-down, slice, dice, pivot. Whitelisted dimensions/measures, per-cell *n* and 95% intervals, low-sample flags |
 | **Regression** | Simple (scipy) and multiple linear regression on log engagement rate; OLS standard errors and p-values; chronological holdout + time-series CV; **within-platform R²** reported next to raw R² |

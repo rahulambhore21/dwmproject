@@ -125,3 +125,24 @@ def reset_workspace_data(session: Session, workspace_id: int) -> None:
     session.execute(delete(FactPost).where(FactPost.workspace_id == workspace_id))
     session.execute(delete(Post).where(Post.workspace_id == workspace_id))
     session.commit()
+
+
+def replace_workspace_content(session: Session, workspace_id: int, name: str | None = None) -> None:
+    """Wipe a workspace's posts, warehouse facts, labels, experiments and learnings (model-run history is kept).
+
+    Experiments and learnings describe the old data, so they cannot survive a replace.
+    The workspace stops being flagged as demo data.
+    """
+    from ..models import Experiment, Learning, Workspace
+
+    session.execute(delete(Learning).where(Learning.workspace_id == workspace_id))
+    for exp in session.execute(select(Experiment).where(Experiment.workspace_id == workspace_id)).scalars():
+        session.delete(exp)
+    session.flush()
+    reset_workspace_data(session, workspace_id)
+    ws = session.get(Workspace, workspace_id)
+    if ws is not None:
+        ws.is_demo = False
+        if name:
+            ws.name = name
+        session.commit()

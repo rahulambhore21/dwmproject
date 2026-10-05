@@ -105,7 +105,7 @@ test.describe("SIGNAL end-to-end smoke", () => {
     await page.getByRole("tab", { name: "Models & data" }).click();
     await expect(page.getByText("Multiple linear regression").first()).toBeVisible();
     await expect(page.getByText("Apriori").first()).toBeVisible();
-    await expect(page.getByText("Import posts")).toBeVisible();
+    await expect(page.getByText("Bring your own data")).toBeVisible();
   });
 
   test("AI interpretation cites evidence and stays hedged", async ({ page }) => {

@@ -1,14 +1,13 @@
 "use client";
 
-import { Upload } from "lucide-react";
-import { useRef, useState } from "react";
 import { Section, Tag } from "@/components/editorial";
 import { Async, ErrorState } from "@/components/states";
 import { Button } from "@/components/ui/button";
-import { ALGORITHM_LABELS, dateShort, fixed, int, pct } from "@/lib/format";
+import { ALGORITHM_LABELS, dateShort, fixed, int } from "@/lib/format";
 import { api } from "@/lib/api";
-import type { EtlReport, EtlRuns, ModelList, ModelRunSummary } from "@/lib/types";
+import type { EtlRuns, ModelList, ModelRunSummary } from "@/lib/types";
 import { useAction, useApi } from "@/lib/use-api";
+import { CsvImporter } from "./csv-importer";
 
 const KEY_METRICS: Record<string, string[]> = {
   linear_regression: ["r2", "pearson_r"], multiple_linear_regression: ["r2", "r2_platform_adjusted", "cv_r2_mean"],
@@ -39,8 +38,8 @@ export function DataTab() {
           )}
         </Async>
       </Section>
-      <Section title="Import posts" kicker="CSV → validate → warehouse → retrain">
-        <Importer onDone={() => { models.reload(); etl.reload(); }} required={etl.data?.required_columns ?? []} />
+      <Section title="Bring your own data" kicker="CSV → map → validate → warehouse → retrain">
+        <CsvImporter onDone={() => { models.reload(); etl.reload(); }} />
         <Async state={etl}>
           {(d) => d.items.length === 0 ? null : (
             <div className="mt-8">
@@ -67,33 +66,5 @@ function RunRow({ r }: { r: ModelRunSummary }) {
       <td className="num pl-6 text-xs">{r.status !== "ok" ? <span className="text-mute">{r.message}</span> : keys.filter((k) => r.metrics[k] != null).map((k) => <span key={k} className="mr-3 inline-block"><span className="text-mute">{k.replace(/_/g, " ")}</span> <strong>{typeof r.metrics[k] === "number" && Math.abs(r.metrics[k] as number) <= 1.0001 && !k.startsWith("n_") ? fixed(r.metrics[k] as number) : fixed(r.metrics[k] as number, 0)}</strong></span>)}</td>
       <td className="text-right text-xs text-mute">{dateShort(r.created_at)}</td>
     </tr>
-  );
-}
-
-function Importer({ onDone, required }: { onDone: () => void; required: string[] }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const [report, setReport] = useState<EtlReport | null>(null);
-  const upload = useAction(async (file: File) => {
-    const fd = new FormData();
-    fd.append("file", file);
-    const r = await api.post<{ report: EtlReport }>("/ingest/csv", fd);
-    setReport(r.report);
-    onDone();
-  });
-  return (
-    <div>
-      <p className="max-w-2xl text-sm text-ink-2">Upload a UTF-8 CSV (≤ 5 MB). Each row is validated (non-negative counts, reach ≤ impressions, engagements ≤ impressions, no future dates), duplicates by platform + external id are skipped, and every rejection is reported. Models retrain automatically if anything loads.</p>
-      <p className="num mt-2 text-xs text-mute">Required columns: {required.join(", ")}</p>
-      <input ref={ref} type="file" accept=".csv,text/csv" className="sr-only" id="csv-file" onChange={(e) => { const f = e.target.files?.[0]; if (f) upload.run(f); e.target.value = ""; }} />
-      <Button className="mt-4" variant="outline" loading={upload.pending} onClick={() => ref.current?.click()}><Upload className="size-4" />Choose CSV</Button>
-      {upload.error && <div className="mt-4"><ErrorState error={upload.error} /></div>}
-      {report && (
-        <div className="mt-6 border border-ink bg-card p-5 text-sm" role="status">
-          <p className="font-medium">{report.rows_loaded} of {report.rows_in} rows loaded</p>
-          <p className="num mt-1 text-xs text-mute">{report.rows_rejected} rejected · {report.duplicates_skipped} duplicates skipped · warehouse now {report.warehouse.fact_rows} facts ({pct(report.rows_loaded / Math.max(report.rows_in, 1), 0)} accepted)</p>
-          {report.rejection_examples.length > 0 && <ul className="mt-3 list-disc space-y-0.5 pl-5 text-xs text-ink-2">{report.rejection_examples.slice(0, 8).map((x) => <li key={x.row}>row {x.row}: {x.reason}</li>)}</ul>}
-        </div>
-      )}
-    </div>
   );
 }
