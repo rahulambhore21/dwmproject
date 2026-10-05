@@ -39,7 +39,7 @@ export function InterpretationPanel({ request, disabled, title = "Interpretation
           <h3 className="font-medium">{title}</h3>
           {result && (
             <Badge tone={result.source === "llm" ? "lime" : "neutral"} title={result.fallback_reason ?? undefined}>
-              {result.source === "llm" ? `Claude · evidence-validated` : "Deterministic reading"}
+              {result.source === "llm" ? `${result.model ?? "OpenAI"} · evidence-validated` : "Deterministic reading"}
             </Badge>
           )}
         </div>

@@ -19,7 +19,7 @@ services:
       DATABASE_URL: postgresql+psycopg://signal:signal@db:5432/signal
       CORS_ORIGINS: http://localhost:3000
       AUTO_SEED: "true"
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       db: { condition: service_healthy }
     ports: ["8000:8000"]

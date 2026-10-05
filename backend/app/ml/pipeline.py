@@ -87,7 +87,9 @@ def train_all(session: Session, workspace_id: int, force: bool = False) -> list[
     df = label_performance(df, platform_thresholds(df))
     for algo, task, trainer in TRAINERS:
         prev = latest_run(session, workspace_id, algo)
-        if prev and not force and prev.dataset_hash == digest and prev.status in ("ok", "insufficient_data"):
+        # Artifacts live on local disk (ephemeral on Railway); a stored run whose file is gone must be retrained.
+        artifact_missing = bool(prev and prev.status == "ok" and prev.artifact_path and not Path(prev.artifact_path).exists())
+        if prev and not force and not artifact_missing and prev.dataset_hash == digest and prev.status in ("ok", "insufficient_data"):
             runs.append(prev)
             continue
         try:

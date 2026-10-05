@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..etl.text import daypart, extract_text_features
 from ..ml.common import FEATURE_LABELS, PRE_PUBLICATION_FEATURES, assert_no_leakage, term_group
-from ..ml.pipeline import latest_run, load_artifact
+from ..ml.pipeline import latest_run, load_artifact, train_all
 from .similarity import find_similar
 
 Z80 = float(stats.norm.ppf(0.9))
@@ -126,6 +126,12 @@ def predict(session: Session, workspace_id: int, frame: pd.DataFrame, d: Draft, 
     assert_no_leakage(PRE_PUBLICATION_FEATURES)
 
     art = load_artifact(mlr_run)
+    if art is None:  # model file lost (e.g. redeploy wiped local disk): retrain once, then reload
+        train_all(session, workspace_id)
+        mlr_run = latest_run(session, workspace_id, "multiple_linear_regression")
+        art = load_artifact(mlr_run)
+        if art is None:
+            return {"status": "insufficient_data", "message": "Models are unavailable; retraining did not produce a usable model.", "prediction": None}
     X = draft_frame(d)
     pred_log = _predict_log(art, X)
     sd = float(mlr_run.metrics["interval_sd_log"])

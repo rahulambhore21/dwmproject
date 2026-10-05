@@ -43,7 +43,7 @@ docker compose up --build      # Postgres + API + web on http://localhost:3000
 | Piece | Target | Notes |
 |---|---|---|
 | Database | **Neon** (or Railway Postgres) | `DATABASE_URL=postgresql://…` (`postgres://` is normalised to the psycopg3 driver) |
-| API | **Railway** | Root dir `backend/`, uses `Dockerfile` + `railway.json`; health check `/api/health`. Set `DATABASE_URL`, `CORS_ORIGINS`, optionally `ANTHROPIC_API_KEY` |
+| API | **Railway** | Root dir `backend/`, uses `Dockerfile` + `railway.json`; health check `/api/health`. Set `DATABASE_URL`, `CORS_ORIGINS`, optionally `OPENAI_API_KEY` |
 | Web | **Vercel** | Root dir `frontend/`. Set `BACKEND_URL` to the API's public URL **before building**: Next.js bakes rewrites at build time |
 
 The browser only talks to the web origin; `/api/*` is proxied to FastAPI, so there is no CORS surface in production. Details in [`.env.example`](.env.example).
@@ -63,7 +63,7 @@ The browser only talks to the web origin; `/api/*` is proxied to FastAPI, so the
 | **Similarity** | TF-IDF caption cosine blended with attribute overlap |
 | **Prediction** | Pre-publication features only, 80% range from out-of-sample residuals, per-feature contributions, history-supported "what-if" swaps |
 | **Experiments** | Welch t, Mann-Whitney, bootstrap CI on the difference, Cohen's d, Bonferroni across variants, minimum detectable effect, minimum-n gate, randomised/not-randomised wording, prediction-vs-outcome check, auto-written learning |
-| **AI layer** | Interprets structured evidence only. Optional Claude (set `ANTHROPIC_API_KEY`); output is validated (cited evidence ids, no invented numbers, no causal language) or replaced by the deterministic reading |
+| **AI layer** | Interprets structured evidence only. Optional OpenAI model (set `OPENAI_API_KEY`); output is validated (cited evidence ids, no invented numbers, no causal language) or replaced by the deterministic reading |
 
 Every training run is stored in `model_runs` (algorithm, features, params, metrics, results, data hash, timestamp). Re-training on unchanged data is a no-op; forced re-training reproduces the same metrics.
 

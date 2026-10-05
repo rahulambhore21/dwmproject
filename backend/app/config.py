@@ -21,8 +21,9 @@ class Settings(BaseSettings):
     auto_seed: bool = True
     seed: int = 7
     # Optional LLM interpretation. Without a key the deterministic interpreter is used.
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-5-5"
+    openai_api_key: str | None = None
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str | None = None  # optional: Azure / proxy / OpenAI-compatible endpoint
     # Minimum posts required before models are trained / predictions are served.
     min_posts_for_models: int = 80
 

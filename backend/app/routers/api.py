@@ -45,7 +45,7 @@ def health(session: Session_) -> dict:
     except Exception as exc:  # pragma: no cover - surfaced to the client
         return {"status": "degraded", "error": str(exc)}
     return {"status": "ok" if ws and n else "empty", "workspace": ws.name if ws else None, "posts": n,
-            "llm_configured": bool(ai.get_settings().anthropic_api_key)}
+            "llm_configured": bool(ai.get_settings().openai_api_key)}
 
 
 @router.get("/overview")

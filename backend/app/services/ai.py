@@ -2,7 +2,7 @@
 
 Deterministic analytics produce evidence; the interpreter may only restate it.
 - Default: deterministic interpreter (no network, no key needed).
-- Optional: Claude (set ANTHROPIC_API_KEY). Output is validated against the evidence;
+- Optional: OpenAI (set OPENAI_API_KEY). Output is validated against the evidence;
   any invented number, unknown evidence id or causal claim triggers a fallback to the
   deterministic reading, and the response says so.
 """
@@ -72,21 +72,21 @@ def validate(statements: list[dict], evidence: list[dict]) -> str | None:
 
 def _llm(evidence: list[dict], scope: str) -> dict | None:
     settings = get_settings()
-    if not settings.anthropic_api_key:
+    if not settings.openai_api_key:
         return None
-    import anthropic
+    from openai import OpenAI
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=45.0, max_retries=1)
+    client = OpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url, timeout=45.0, max_retries=1)
     payload = json.dumps({"scope": scope, "evidence": [{k: e[k] for k in ("id", "label", "text", "n")} for e in evidence]}, ensure_ascii=False)
-    resp = client.messages.create(
-        model=settings.anthropic_model, max_tokens=4000, system=SYSTEM,
-        output_config={"effort": "low"},
-        messages=[{"role": "user", "content": payload}],
+    resp = client.chat.completions.create(
+        model=settings.openai_model, temperature=0,
+        response_format={"type": "json_object"},
+        messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": payload}],
     )
-    if resp.stop_reason == "refusal":
+    choice = resp.choices[0]
+    if getattr(choice.message, "refusal", None):
         raise RuntimeError("model declined the request")
-    text = next((b.text for b in resp.content if b.type == "text"), "")
-    text = text.strip()
+    text = (choice.message.content or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?|```$", "", text, flags=re.M).strip()
     return json.loads(text)
@@ -98,7 +98,7 @@ def interpret(scope: str, evidence: list[dict], statements: list[dict]) -> dict:
     if not evidence:
         return {**base, "source": "deterministic", "statements": [], "caveats": ["Not enough data to interpret."], "fallback_reason": None}
     fallback_reason = None
-    if get_settings().anthropic_api_key:
+    if get_settings().openai_api_key:
         try:
             out = _llm(evidence, scope)
             problem = validate(out.get("statements", []), evidence) if out else "empty response"
@@ -106,7 +106,7 @@ def interpret(scope: str, evidence: list[dict], statements: list[dict]) -> dict:
                 strengths = {"weak", "moderate", "strong"}
                 stm = [{"text": s["text"], "evidence_ids": s["evidence_ids"], "strength": s.get("strength") if s.get("strength") in strengths else "moderate"}
                        for s in out["statements"]]
-                return {**base, "source": "llm", "model": get_settings().anthropic_model, "statements": stm,
+                return {**base, "source": "llm", "model": get_settings().openai_model, "statements": stm,
                         "caveats": [str(c) for c in out.get("caveats", [])][:4], "fallback_reason": None}
             fallback_reason = f"LLM output rejected by evidence validator ({problem})"
         except Exception as exc:  # network, auth, parse: never break the product
