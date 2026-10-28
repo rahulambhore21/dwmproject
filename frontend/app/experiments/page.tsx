@@ -83,7 +83,13 @@ function NewExperiment() {
     const exp = await api.post<ExperimentDetail>("/experiments", input);
     router.push(`/experiments/${exp.id}`);
   });
-  const ready = f.name.trim().length >= 3 && f.hypothesis.trim().length >= 5 && f.a.trim() && f.b.trim();
+  const missing = [
+    f.name.trim().length < 3 && "a name (3+ characters)",
+    f.hypothesis.trim().length < 5 && "a hypothesis (5+ characters)",
+    !f.a.trim() && "the A · control description",
+    !f.b.trim() && "the B · variant description",
+  ].filter(Boolean) as string[];
+  const ready = missing.length === 0;
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Button variant="accent" onClick={() => setOpen(true)}><Plus className="size-4" />New experiment</Button>
@@ -100,6 +106,7 @@ function NewExperiment() {
           </div>
           <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={f.randomized} onChange={(e) => setF({ ...f, randomized: e.target.checked })} /><span>Posts will be assigned to variants at random.</span></label>
           {create.error && <div role="alert" className="text-sm text-alert">{create.error.message}{create.error.details?.map((d) => <p key={d.field}>{d.field}: {d.message}</p>)}</div>}
+          {!ready && <p className="text-xs text-mute" aria-live="polite">To create: add {missing.join(", ")}.</p>}
           <div className="flex justify-end gap-2"><DialogClose asChild><Button type="button" variant="ghost">Cancel</Button></DialogClose><Button type="submit" variant="accent" disabled={!ready} loading={create.pending}>Create</Button></div>
         </form>
       </DialogContent>

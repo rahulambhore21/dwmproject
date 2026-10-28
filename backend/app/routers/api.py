@@ -16,7 +16,7 @@ from ..etl.pipeline import MAX_ROWS_PER_BATCH, RawPostIn, ingest_records, replac
 from ..ml.pipeline import ALGORITHMS, latest_run, latest_runs, train_all
 from ..models import EtlRun, ModelRun
 from ..olap import engine as olap
-from ..services import ai, autopsy, evidence, overview, prediction, similarity
+from ..services import ai, autopsy, evidence, methods, overview, prediction, similarity
 from ..services import experiments as exp_svc
 from ..services.common import ApiError, Context, get_context
 from ..warehouse.frames import load_fact_frame
@@ -120,9 +120,14 @@ def olap_schema() -> dict:
 @router.post("/olap/query")
 def olap_query(q: olap.OlapQuery, c: Ctx) -> dict:
     try:
-        return olap.run_query(c.frame, q)
+        return {**olap.run_query(c.frame, q), "sql": olap.to_sql(q)}
     except ValueError as exc:
         raise ApiError(422, "invalid_query", str(exc)) from exc
+
+
+@router.get("/methods")
+def get_methods(c: Ctx) -> dict:
+    return methods.build_methods(c.session, c.workspace.id, c.frame)
 
 
 def _run_json(r: ModelRun, full: bool) -> dict:

@@ -26,6 +26,7 @@ export default defineConfig({
       PORT: port,
       API_PORT: apiPort,
       SIGNAL_SKIP_SETUP: "1",
+      NEXT_DIST_DIR: ".next-e2e",
       DATABASE_URL: `sqlite:///${join(root, "backend", "data", "e2e.db").replace(/\\/g, "/")}`,
       ARTIFACTS_DIR: join(root, "backend", "data", "e2e-artifacts"),
     },

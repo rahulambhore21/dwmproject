@@ -44,8 +44,9 @@ function Body({ e, reload }: { e: ExperimentDetail; reload: () => void }) {
         eyebrow={`04 · Experiment #${e.id}`}
         title={e.name}
         lede={<><span className="block">{e.hypothesis}</span><span className="mt-3 flex flex-wrap items-center gap-2"><Tag tone={running ? "lime" : "ink"}>{e.status}</Tag><Tag>{e.platform}</Tag><Tag tone="mute">varies: {e.variable}</Tag><Tag tone={e.randomized ? "neutral" : "alert"}>{e.randomized ? "randomised" : "not randomised"}</Tag>{e.source === "prepublish_lab" && <Tag tone="mute">from Lab</Tag>}</span></>}
-        actions={running ? <Button variant="accent" disabled={!ready} loading={complete.pending} onClick={() => complete.run()} title={ready ? undefined : "Every variant needs enough posts first"}><CheckCircle2 className="size-4" />Conclude & record learning</Button> : undefined}
+        actions={running ? <Button variant="accent" disabled={!ready} loading={complete.pending} onClick={() => complete.run()}><CheckCircle2 className="size-4" />Conclude & record learning</Button> : undefined}
       />
+      {running && !ready && <p role="status" className="-mt-4 mb-6 text-sm text-mute"><strong className="font-medium text-ink">Conclude is unavailable yet.</strong> {a.message ?? "Every variant needs enough posts first."}</p>}
       {complete.error && <ErrorState error={complete.error} className="mb-6" />}
 
       <div className="grid gap-8 sm:grid-cols-3">
@@ -145,6 +146,7 @@ function LogForm({ e, onSaved }: { e: ExperimentDetail; onSaved: () => void }) {
         <Field label="Engagements" htmlFor="o-eng"><Input id="o-eng" type="number" min={0} inputMode="numeric" value={f.engagements} onChange={(ev) => setF({ ...f, engagements: ev.target.value })} /></Field>
         <div className="flex items-end"><Button type="submit" variant="primary" className="w-full" disabled={!ok} loading={save.pending}>Add</Button></div>
       </form>
+      {!ok && !clientError && <p className="mt-3 text-xs text-mute" aria-live="polite">To add a post: enter impressions (at least 1) and engagements.</p>}
       {(clientError || save.error) && <p role="alert" className="mt-3 text-sm text-alert">{clientError ?? save.error?.message}</p>}
       <p className="mt-3 text-xs text-mute">Engagements = likes + comments + shares + saves.</p>
     </Section>

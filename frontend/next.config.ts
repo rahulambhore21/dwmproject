@@ -8,6 +8,8 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${BACKEND_URL}/api/:path*` }];
   },
+  // e2e runs use their own build dir so they can run beside a developer's `npm run dev` (Next allows one dev server per dir).
+  distDir: process.env.NEXT_DIST_DIR || undefined,
   poweredByHeader: false,
 };
 

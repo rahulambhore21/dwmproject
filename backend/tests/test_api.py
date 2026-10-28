@@ -103,3 +103,18 @@ def test_csv_ingest_validation(client):
     empty = client.post("/api/ingest/csv", files={"file": ("p.csv", io.BytesIO(header.encode()), "text/csv")})
     assert empty.status_code == 422
     assert client.get("/api/etl/runs").json()["items"]
+
+
+def test_methods_catalogue_is_live(client):
+    r = client.get("/api/methods")
+    assert r.status_code == 200
+    d = r.json()
+    keys = [a["key"] for a in d["algorithms"]]
+    assert {"etl", "warehouse", "olap", "linear_regression", "multiple_linear_regression", "mutual_information", "decision_tree",
+            "gaussian_nb", "kmeans", "agglomerative", "apriori", "similarity", "experiments"} <= set(keys)
+    tree = next(a for a in d["algorithms"] if a["key"] == "decision_tree")
+    assert "DecisionTreeClassifier" in tree["source"][0]["code"]  # real source, not a copy
+    assert tree["run"]["status"] == "ok" and tree["run"]["metrics"]
+    assert {t["name"] for t in d["star_schema"]["tables"]} >= {"fact_post", "dim_date", "dim_platform"}
+    assert {e["key"] for e in d["olap"]["examples"]} == {"rollup", "drilldown", "slice", "dice", "pivot", "subtotals"}
+    assert all(e["sql"].startswith("SELECT") and e["status"] == "ok" for e in d["olap"]["examples"])

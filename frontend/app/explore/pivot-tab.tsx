@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Section } from "@/components/editorial";
+import { CodeBlock } from "@/components/code-block";
 import { EmptyState, ErrorState, LoadingBlock } from "@/components/states";
 import { Field, Select } from "@/components/ui/select";
 import { api } from "@/lib/api";
@@ -76,6 +78,12 @@ export function PivotTab() {
         {!result && !query.error && <LoadingBlock rows={6} label="Running query" />}
         {result?.status === "empty" && <EmptyState title="No data in this slice">{result.message}</EmptyState>}
         {result?.status === "ok" && (result.pivot ? <PivotTable result={result} /> : <FlatTable result={result} dims={input.rows} />)}
+        {result?.sql && (
+          <details className="mt-5 border border-line">
+            <summary className="cursor-pointer select-none px-4 py-2 text-sm hover:bg-paper-2">Show the SQL for this view</summary>
+            <div className="p-4 pt-2"><CodeBlock code={result.sql} label="SQL for the current pivot" /><p className="mt-2 text-xs text-mute">More on how each operation maps to SQL on the <Link href="/methods#olap" className="underline underline-offset-2">Methods</Link> page.</p></div>
+          </details>
+        )}
         <p className="mt-3 text-xs text-mute">Rates are per-post means (each post counts once) with 95% t-intervals. † marks cells with fewer than {result?.low_sample_threshold ?? 8} posts: read them as anecdotes.</p>
       </div>
     </Section>

@@ -11,6 +11,7 @@ const NAV = [
   { href: "/experiments", label: "Experiments", step: "Experiment" },
   { href: "/learning", label: "Learning", step: "Learn" },
   { href: "/explore", label: "Explore", step: "Analyse" },
+  { href: "/methods", label: "Methods", step: "Inspect" },
 ];
 
 export function SiteHeader() {

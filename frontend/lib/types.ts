@@ -328,6 +328,8 @@ export interface OlapResult {
   low_sample_threshold: number;
   dimensions?: string[];
   measures?: string[];
+  /** Star-schema SQL equivalent of the query that produced this result. */
+  sql?: string;
 }
 
 export interface OlapQueryInput {
@@ -474,4 +476,55 @@ export interface EtlRuns {
   items: { id: number; source: string; started_at: string; rows_in: number; rows_loaded: number; report: EtlReport }[];
   required_columns: string[];
   optional_columns: string[];
+}
+
+// ---- Methods (how every algorithm / OLAP operation is implemented)
+export interface MethodSource { function: string; file: string; line: number; code: string }
+export interface MethodRun {
+  status: string;
+  message: string | null;
+  metrics: Record<string, number | string | null | Record<string, number>>;
+  params: Record<string, unknown>;
+  n_train: number;
+  n_test: number;
+  trained_at: string;
+  dataset_hash: string;
+}
+export interface MethodEntry {
+  key: string;
+  name: string;
+  group: string;
+  summary: string;
+  steps: string[];
+  why: string;
+  guardrails: string[];
+  target: string | null;
+  features: string | null;
+  used_in: { label: string; href: string }[];
+  source: MethodSource[];
+  run: MethodRun | null;
+}
+export interface OlapExample {
+  key: string;
+  name: string;
+  meaning: string;
+  query: Record<string, unknown>;
+  sql: string;
+  status: string;
+  preview:
+    | { kind: "table"; dimensions: string[]; measures: string[]; n_posts: number; rows: ({ keys: Record<string, string | number | null>; level: number } & Record<string, unknown>)[] }
+    | { kind: "pivot"; measure: string; row_dimensions: string[]; column_labels: (string | number)[]; rows: { keys: Record<string, string | number | null>; cells: (number | null)[] }[] }
+    | null;
+}
+export interface StarTable {
+  name: string;
+  role: "fact" | "dimension";
+  columns: { name: string; type: string; pk: boolean; references: string | null }[];
+}
+export interface Methods {
+  has_data: boolean;
+  n_posts: number;
+  star_schema: { grain: string; tables: StarTable[] };
+  olap: { dimensions: { key: string; label: string }[]; hierarchies: { name: string; levels: string[] }[]; measures: { key: string; label: string; is_rate: boolean }[]; examples: OlapExample[]; note: string };
+  algorithms: MethodEntry[];
 }

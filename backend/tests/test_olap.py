@@ -63,3 +63,35 @@ def test_rejects_unknown_dimensions_and_bad_pivots(df):
         OlapQuery(rows=["platform"], columns="platform")
     with pytest.raises(ValueError):
         run_query(df, OlapQuery(columns="platform"))
+
+
+def test_to_sql_describes_the_same_query():
+    from app.olap.engine import to_sql
+
+    q = OlapQuery(rows=["platform", "weekday"], columns="daypart", filters={"format": ["Reel", "O'Brien"]},
+                  measures=["posts", "median_engagement_rate"], rollup=True, min_posts=5)
+    sql = to_sql(q)
+    assert "GROUP BY ROLLUP (dp.name, d.day_name), dd.name" in sql
+    assert "JOIN dim_platform" in sql and "JOIN dim_daypart" in sql and "JOIN dim_format" in sql
+    assert sql.count("JOIN dim_date") == 1  # joined once even though used by several dimensions
+    assert "IN ('Reel', 'O''Brien')" in sql  # quotes escaped
+    assert "percentile_cont(0.5)" in sql and "HAVING COUNT(*) >= 5" in sql
+    assert "workspace_id = :workspace_id" in sql
+
+
+def test_to_sql_group_by_matches_engine(seeded):
+    """Run the generated SQL on the test DB (no ROLLUP / percentile) and compare with the engine."""
+    from sqlalchemy import text
+
+    from app.olap.engine import to_sql
+
+    s, ws = seeded
+    q = OlapQuery(rows=["platform", "year"], measures=["posts", "engagement_rate"], sort_by="posts", limit=1000)
+    sql = to_sql(q).rstrip(";").replace(":workspace_id", str(ws.id))
+    got = {(r[0], r[1]): (r[2], r[3]) for r in s.execute(text(sql)).all()}
+    frame = load_fact_frame(s, ws.id)
+    out = run_query(frame, q)
+    assert len(got) == len(out["rows"])
+    for r in out["rows"]:
+        n, er = got[(r["keys"]["platform"], r["keys"]["year"])]
+        assert n == r["posts"] and er == pytest.approx(r["engagement_rate"], abs=1e-5)

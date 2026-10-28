@@ -70,6 +70,73 @@ def schema() -> dict:
     }
 
 
+# dimension -> (SQL expression, join clause needed or None). `f` is fact_post.
+_DIM_SQL: dict[str, tuple[str, str | None]] = {
+    "platform": ("dp.name", "JOIN dim_platform dp ON dp.key = f.platform_key"),
+    "format": ("df_.name", "JOIN dim_format df_ ON df_.key = f.format_key"),
+    "topic": ("dt.name", "JOIN dim_topic dt ON dt.key = f.topic_key"),
+    "hook": ("dh.name", "JOIN dim_hook dh ON dh.key = f.hook_key"),
+    "tone": ("dn.name", "JOIN dim_tone dn ON dn.key = f.tone_key"),
+    "daypart": ("dd.name", "JOIN dim_daypart dd ON dd.key = f.daypart_key"),
+    "hour": ("f.hour", None),
+    "weekday": ("d.day_name", "JOIN dim_date d ON d.date_key = f.date_key"),
+    "year": ("d.year", "JOIN dim_date d ON d.date_key = f.date_key"),
+    "quarter": ("d.quarter", "JOIN dim_date d ON d.date_key = f.date_key"),
+    "month": ("d.month_label", "JOIN dim_date d ON d.date_key = f.date_key"),
+}
+_MEASURE_SQL: dict[str, str] = {
+    "posts": "COUNT(*)",
+    "impressions": "SUM(f.impressions)",
+    "engagements": "SUM(f.engagements)",
+    "engagement_rate": "AVG(f.engagement_rate)",
+    "median_engagement_rate": "percentile_cont(0.5) WITHIN GROUP (ORDER BY f.engagement_rate)",
+    "save_rate": "AVG(f.save_rate)",
+    "share_rate": "AVG(f.share_rate)",
+    "comment_rate": "AVG(f.comment_rate)",
+    "avg_impressions": "AVG(f.impressions)",
+}
+
+
+def _sql_literal(v: str | int) -> str:
+    return str(v) if isinstance(v, int) and not isinstance(v, bool) else "'" + str(v).replace("'", "''") + "'"
+
+
+def to_sql(q: OlapQuery) -> str:
+    """The star-schema SQL equivalent of an OLAP query (documentation of what the engine computes).
+
+    The engine evaluates the same grouping over the already-joined fact frame with pandas; this text
+    is generated from the identical OlapQuery so the two cannot describe different questions.
+    """
+    group_dims = [*q.rows, *([q.columns] if q.columns else [])]
+    used = [*group_dims, *q.filters.keys()]
+    joins: list[str] = []
+    for dim in used:
+        j = _DIM_SQL[dim][1]
+        if j and j not in joins:
+            joins.append(j)
+    select = [f"{_DIM_SQL[d][0]} AS {d}" for d in group_dims]
+    select += [f"{_MEASURE_SQL[m]} AS {m}" for m in q.measures]
+    lines = ["SELECT " + ",\n       ".join(select), "FROM fact_post f", *joins, "WHERE f.workspace_id = :workspace_id"]
+    for dim, values in q.filters.items():
+        if values:
+            lines.append(f"  AND {_DIM_SQL[dim][0]} IN ({', '.join(_sql_literal(v) for v in values)})")
+    if group_dims:
+        row_exprs = ", ".join(_DIM_SQL[d][0] for d in q.rows)
+        col_expr = _DIM_SQL[q.columns][0] if q.columns else None
+        if q.rollup and len(q.rows) > 1:
+            lines.append(f"GROUP BY ROLLUP ({row_exprs})" + (f", {col_expr}" if col_expr else ""))
+        else:
+            lines.append("GROUP BY " + ", ".join(e for e in (row_exprs, col_expr) if e))
+    if q.min_posts > 1:
+        lines.append(f"HAVING COUNT(*) >= {q.min_posts}")
+    if q.sort_by:
+        lines.append(f"ORDER BY {q.sort_by} {'DESC' if q.descending else 'ASC'}")
+    elif group_dims:
+        lines.append(f"ORDER BY {q.measures[0]} {'DESC' if q.descending else 'ASC'}")
+    lines.append(f"LIMIT {q.limit};")
+    return "\n".join(lines)
+
+
 def _apply_filters(df: pd.DataFrame, filters: dict) -> pd.DataFrame:
     for dim, values in filters.items():
         if not values:
