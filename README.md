@@ -17,10 +17,10 @@ Requires **Node ≥ 20** and **Python ≥ 3.10**.
 
 ```bash
 npm install     # installs the frontend and creates backend/.venv (first run: a few minutes)
-npm run dev     # API on :8000, web on :3000
+npm run dev     # API on :5000, web on :3000
 ```
 
-Open <http://localhost:3000>. The first boot seeds the demo workspace, builds the warehouse and trains the models (~15 s); the UI waits for it automatically. API docs: <http://localhost:8000/docs>.
+Open <http://localhost:3000>. The first boot seeds the demo workspace, builds the warehouse and trains the models (~15 s); the UI waits for it automatically. API docs: <http://localhost:5000/docs>.
 
 | Command | What it does |
 |---|---|

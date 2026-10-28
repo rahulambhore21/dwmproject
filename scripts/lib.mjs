@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,4 +59,88 @@ export function killTree(child) {
   if (!child || child.killed || child.exitCode !== null) return;
   if (isWin) spawnSync("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
   else child.kill("SIGTERM");
+}
+
+// ----- ports: a leftover SIGNAL server (e.g. the terminal was closed instead of Ctrl+C) must not block the next run
+
+export function portFree(port) {
+  return new Promise((done) => {
+    const srv = createServer();
+    srv.once("error", () => done(false));
+    srv.once("listening", () => srv.close(() => done(true)));
+    srv.listen(Number(port)); // no host: binds dual-stack, the same way Next.js and uvicorn collide
+  });
+}
+
+function listenerPid(port) {
+  if (isWin) {
+    const r = spawnSync("netstat", ["-ano"], { encoding: "utf8" });
+    for (const line of (r.stdout ?? "").split(/\r?\n/)) {
+      const cols = line.trim().split(/\s+/);
+      if (cols[0] === "TCP" && cols[3] === "LISTENING" && cols[1].endsWith(`:${port}`)) return Number(cols[4]);
+    }
+    return null;
+  }
+  const r = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], { encoding: "utf8" });
+  const pid = Number((r.stdout ?? "").split(/\s+/)[0]);
+  return pid > 0 ? pid : null;
+}
+
+// The listening process and up to three ancestors: [{ pid, cmd }], listener first.
+function processChain(pid) {
+  if (isWin) {
+    const ps = `$p=${pid};$o=@();for($i=0;$i -lt 4 -and $p;$i++){$x=Get-CimInstance Win32_Process -Filter "ProcessId=$p";`
+      + `if(-not $x){break};$o+=[pscustomobject]@{pid=[int]$x.ProcessId;cmd=[string]$x.CommandLine};$p=$x.ParentProcessId};`
+      + `ConvertTo-Json -InputObject $o -Compress`;
+    const r = spawnSync("powershell", ["-NoProfile", "-NonInteractive", "-Command", ps], { encoding: "utf8" });
+    try { return [].concat(JSON.parse(r.stdout || "[]")); } catch { return []; }
+  }
+  const chain = [];
+  for (let p = pid; p > 1 && chain.length < 4;) {
+    const r = spawnSync("ps", ["-o", "ppid=,command=", "-p", String(p)], { encoding: "utf8" });
+    const m = (r.stdout ?? "").trim().match(/^(\d+)\s+(.*)$/);
+    if (!m) break;
+    chain.push({ pid: p, cmd: m[2] });
+    p = Number(m[1]);
+  }
+  return chain;
+}
+
+const norm = (s) => String(s ?? "").replaceAll("\\", "/").toLowerCase();
+
+// Stop a stale process from this repository that holds `port`. Returns true if it did.
+function reclaim(port, label) {
+  const pid = listenerPid(port);
+  if (!pid) return false;
+  const chain = processChain(pid);
+  const ours = (c) => norm(c.cmd).includes(norm(ROOT));
+  // the listener may be a worker whose command line omits the path (uvicorn --reload), so match its ancestors too
+  let top = chain.findIndex(ours);
+  if (top < 0) return false;
+  while (top + 1 < chain.length && ours(chain[top + 1])) top++;
+  const target = chain[top].pid;
+  if (isWin) spawnSync("taskkill", ["/pid", String(target), "/T", "/F"], { stdio: "ignore" });
+  else spawnSync("kill", ["-TERM", String(target)], { stdio: "ignore" });
+  console.log(`[signal] port ${port} was held by a leftover SIGNAL ${label} (pid ${target}); stopped it.`);
+  return true;
+}
+
+// Prefer `preferred`; reclaim it from our own leftovers; otherwise move to the next free port.
+export async function choosePort(preferred, label) {
+  const want = Number(preferred);
+  if (await portFree(want)) return String(want);
+  if (reclaim(want, label)) {
+    for (let i = 0; i < 25; i++) {
+      if (await portFree(want)) return String(want);
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  for (let p = want + 1; p < want + 20; p++) {
+    if (await portFree(p)) {
+      console.log(`[signal] port ${want} is used by another program; using ${p} for the ${label} instead.`);
+      return String(p);
+    }
+  }
+  console.error(`[signal] no free port found near ${want} for the ${label}. Set ${label === "web" ? "PORT" : "API_PORT"} to a free port.`);
+  process.exit(1);
 }

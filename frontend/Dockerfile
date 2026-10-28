@@ -8,7 +8,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Next.js bakes rewrites at build time: BACKEND_URL must be the API's address as seen from the web container.
-ARG BACKEND_URL=http://api:8000
+ARG BACKEND_URL=http://api:5000
 ENV BACKEND_URL=${BACKEND_URL} NEXT_OUTPUT=standalone NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
